@@ -10,6 +10,27 @@ Bu repository, TCDD bilet akışındaki sayfaların **DOM yapısını incelemek*
 
 ---
 
+## Hızlı Başlangıç
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python main.py
+```
+
+## Ortam Değişkenleri
+
+| Değişken | Varsayılan | Açıklama |
+| --- | --- | --- |
+| `TARGET_URL` | `https://example.com` | TCDD sayfa URL’si |
+| `HEADLESS` | `0` | `1` ise headless çalışır |
+| `GENDER` | `MALE` | `MALE` / `FEMALE` |
+| `CONFIRM_SEAT` | `0` | `1` ise koltuğu onaylar |
+| `POLL_INTERVAL` | `2.0` | saniye cinsinden bekleme |
+| `EMPTY_IMG_HASHES` | boş | virgüllü hash listesi |
+
 ## Proje Yapısı
 
 ```text

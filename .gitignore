@@ -4,8 +4,11 @@ __pycache__/
 *.egg-info/
 .env
 .env.local
+.env.*
+!.env.example
 venv/
 venv*/
+.venv/
 .Python
 build/
 dist/
@@ -16,3 +19,4 @@ dist/
 .idea/
 .vscode/
 .pytest_cache/
+.python-version
