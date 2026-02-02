@@ -1,5 +1,6 @@
 import os
 import time
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -28,6 +29,10 @@ SELECTORS = {
     "gender_female": 'input[name="gender1"][value="FEMALE"]',
     "sidebar_confirm": ".b-sidebar-footer button.btn-primary",
     "seat_click_saleable_css": "#canvasWrapperdeparture-0 .seatMapClick:not(.notSaleable)",
+    "gender_popover_body": ".popover-body",
+    "gender_popover_buttons": ".popover-body .popoverBtn",
+    "gender_popover_women_img": ".popover-body img[alt*='women']",
+    "gender_popover_man_img": ".popover-body img[alt*='man']",
 }
 
 
@@ -87,6 +92,36 @@ def click_gender(driver: webdriver.Chrome, gender: str):
     ).click()
 
 
+def click_gender_popover(driver: webdriver.Chrome, gender: str) -> bool:
+    try:
+        popover = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, SELECTORS["gender_popover_body"]))
+        )
+    except TimeoutException:
+        return False
+    try:
+        if gender == "FEMALE":
+            img = popover.find_element(By.CSS_SELECTOR, SELECTORS["gender_popover_women_img"])
+        else:
+            img = popover.find_element(By.CSS_SELECTOR, SELECTORS["gender_popover_man_img"])
+        driver.execute_script("arguments[0].click();", img)
+        return True
+    except Exception:
+        pass
+    try:
+        buttons = popover.find_elements(By.CSS_SELECTOR, SELECTORS["gender_popover_buttons"])
+        if not buttons:
+            return False
+        if gender == "FEMALE":
+            idx = 0
+        else:
+            idx = 1 if len(buttons) > 1 else 0
+        driver.execute_script("arguments[0].click();", buttons[idx])
+        return True
+    except Exception:
+        return False
+
+
 def sidebar_has_selected_seat(driver: webdriver.Chrome) -> bool:
     return get_sidebar_seat_number(driver) is not None
 
@@ -117,6 +152,36 @@ def confirm_button_enabled(driver: webdriver.Chrome) -> bool:
         return btn.is_enabled()
     except Exception:
         return False
+
+
+def play_alert_sound():
+    # Best-effort beep on macOS; fallback to terminal bell.
+    try:
+        subprocess.run(["osascript", "-e", "beep 1"], check=False, timeout=2)
+    except Exception:
+        pass
+    try:
+        print("\a", end="", flush=True)
+    except Exception:
+        pass
+
+
+def speak_alert(message: str):
+    try:
+        subprocess.run(["say", message], check=False, timeout=5)
+    except Exception:
+        pass
+
+
+def alert_for_duration(message: str, seconds: int, sound: bool):
+    end_time = time.time() + max(0, seconds)
+    if sound:
+        speak_alert(message)
+    while time.time() < end_time:
+        print(message)
+        if sound:
+            play_alert_sound()
+        time.sleep(2)
 
 
 def choose_first_available_seat(driver: webdriver.Chrome, gender: str, confirm: bool):
@@ -205,10 +270,34 @@ def find_available_seats_in_current_wagon(driver: webdriver.Chrome):
             number_el = seat.find_element(By.CSS_SELECTOR, SELECTORS["seat_number_inside"])
             num = (number_el.text or "").strip()
             if num:
-                found.append(num)
+                found.append((num, seat))
         except Exception:
             continue
     return found
+
+
+def select_seat_in_current_wagon(
+    driver: webdriver.Chrome, seat_entries, gender: str, confirm: bool
+):
+    for num, seat in seat_entries:
+        try:
+            if not seat.is_displayed():
+                continue
+            driver.execute_script("arguments[0].click();", seat)
+            wait_gone(driver, SELECTORS["loading_any"], timeout=10)
+            if click_gender_popover(driver, gender):
+                return num
+            try:
+                open_sidebar_if_needed(driver)
+                click_gender(driver, gender)
+                if confirm and confirm_button_enabled(driver):
+                    driver.find_element(By.CSS_SELECTOR, SELECTORS["sidebar_confirm"]).click()
+                return num
+            except Exception:
+                continue
+        except (StaleElementReferenceException, TimeoutException):
+            continue
+    return None
 
 
 def main():
@@ -219,7 +308,10 @@ def main():
     headless = os.getenv("HEADLESS", "0") == "1"
     gender = os.getenv("GENDER", "MALE").upper()
     confirm = os.getenv("CONFIRM_SEAT", "0") == "1"
+    auto_select = os.getenv("AUTO_SELECT", "0") == "1"
     poll_interval = float(os.getenv("POLL_INTERVAL", "2.0"))
+    sound_enabled = os.getenv("SOUND", "0") == "1"
+    sound_duration = int(float(os.getenv("SOUND_DURATION", "20")))
 
     print("ENV PATH:", env_path)
     print("URL:", url)
@@ -231,7 +323,10 @@ def main():
         wait_visible(driver, SELECTORS["seatmap_ready"], timeout=30)
         wait_gone(driver, SELECTORS["loading_any"], timeout=20)
 
-        print("Seat map hazır. Vagonlar arasında geziliyor (koltuk seçimi devre dışı).")
+        if auto_select:
+            print("Seat map hazır. Vagonlar arasında geziliyor (otomatik seçim açık).")
+        else:
+            print("Seat map hazır. Vagonlar arasında geziliyor (koltuk seçimi devre dışı).")
         last_alert = set()
         while True:
             found = False
@@ -247,18 +342,29 @@ def main():
                 if "active" not in btn.get_attribute("class"):
                     driver.execute_script("arguments[0].click();", btn)
                     wait_gone(driver, SELECTORS["loading_any"], timeout=10)
-                seats = find_available_seats_in_current_wagon(driver)
-                if seats:
+                seat_entries = find_available_seats_in_current_wagon(driver)
+                if seat_entries:
                     label = current_wagon_label(btn)
+                    seats = [n for n, _ in seat_entries]
                     keyed = [f"{label}:{s}" for s in seats]
                     new_seats = [s for s, k in zip(seats, keyed) if k not in last_alert]
                     if new_seats:
                         print(f"Koltuk boşaldı: {label} -> {', '.join(new_seats)}")
                         last_alert.update(keyed)
+                        if auto_select:
+                            selected = select_seat_in_current_wagon(
+                                driver, seat_entries, gender, confirm
+                            )
+                            if selected:
+                                print(f"Koltuk seçildi: {label} -> {selected}")
                         found = True
                         break
             if found:
-                print("Uyarı verildi. Bu vagonda bekleniyor.")
+                alert_for_duration(
+                    "Koltuk bulundu da! Bu vagonda bekleniyor.",
+                    sound_duration,
+                    sound_enabled,
+                )
                 input("Devam etmek için Enter...")
             time.sleep(poll_interval)
 
