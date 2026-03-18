@@ -109,6 +109,26 @@ Snapshot: `docs/03_seat_map.html`
 ### Vagon seçimi (üstteki vagon butonları)
 - wagon_bar_container: `.wagonMap`
 - wagon_buttons: `.wagonMap .btnWagon`
+- wagon_active: `.wagonMap .btnWagon.active`
+
+### 🔹 VAGON TİPİ AYRIMI (KRİTİK)
+
+> Business / Ekonomi ayrımı **koltuk renginden yapılmaz**.  
+> Ayrım **vagon container** üzerinden yapılır.
+
+#### Business Vagon (2+1)
+- business_wagon_container: `[data-wagon-type="BUSINESS"], .wagon.business`
+- business_seat_all: `[data-wagon-type="BUSINESS"] .seatMapClick`
+- business_seat_saleable: `[data-wagon-type="BUSINESS"] .seatMapClick:not(.notSaleable)`
+- business_seat_not_saleable: `[data-wagon-type="BUSINESS"] .seatMapClick.notSaleable`
+
+#### Ekonomi Vagon (2+2)
+- economy_wagon_container: `[data-wagon-type="ECONOMY"], .wagon.economy`
+- economy_seat_all: `[data-wagon-type="ECONOMY"] .seatMapClick`
+- economy_seat_saleable: `[data-wagon-type="ECONOMY"] .seatMapClick:not(.notSaleable)`
+- economy_seat_not_saleable: `[data-wagon-type="ECONOMY"] .seatMapClick.notSaleable`
+
+---
 
 ### Koltuk grid alanı
 - seatmap_canvas: `.seatMapCanvas`
